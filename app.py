@@ -37,12 +37,10 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
 
-    /* Hide default Streamlit chrome */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
 
-    /* App Background & Typography */
     .stApp {
         background: radial-gradient(circle at top, #1a1f3c 0%, #0b0e1a 100%);
         color: #f8fafc;
@@ -55,7 +53,6 @@ st.markdown("""
         padding-bottom: 3rem;
     }
 
-    /* Brand Header */
     .app-header {
         text-align: center;
         margin-bottom: 1.2rem;
@@ -79,7 +76,6 @@ st.markdown("""
         margin-top: 2px;
     }
 
-    /* Top Player Pill Bar */
     .user-pill {
         background: rgba(255, 255, 255, 0.06);
         border: 1px solid rgba(255, 255, 255, 0.12);
@@ -116,7 +112,6 @@ st.markdown("""
         font-weight: 800;
     }
 
-    /* Live Status Banner */
     .status-banner {
         padding: 16px;
         border-radius: 16px;
@@ -150,7 +145,6 @@ st.markdown("""
         50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.45); }
     }
 
-    /* 3D Arcade Buzzer Button */
     .buzzer-active div.stButton > button {
         height: clamp(165px, 28vh, 230px) !important;
         font-size: clamp(32px, 6vw, 46px) !important;
@@ -172,7 +166,6 @@ st.markdown("""
         box-shadow: 0 4px 0 #7f0909, 0 10px 20px rgba(255, 59, 59, 0.4) !important;
     }
 
-    /* Locked / Buzzed States */
     .buzzer-locked div.stButton > button {
         height: clamp(150px, 25vh, 200px) !important;
         font-size: clamp(24px, 4.5vw, 32px) !important;
@@ -193,7 +186,6 @@ st.markdown("""
         border-radius: 28px !important;
     }
 
-    /* Standard Action Buttons */
     .action-btn div.stButton > button {
         min-height: 50px !important;
         font-size: 15px !important;
@@ -201,7 +193,6 @@ st.markdown("""
         border-radius: 12px !important;
     }
 
-    /* Styled Exit Button */
     .exit-btn div.stButton > button {
         min-height: 44px !important;
         font-size: 14px !important;
@@ -216,7 +207,6 @@ st.markdown("""
         color: #ffffff !important;
     }
 
-    /* Buzz Queue & Leaderboard Cards */
     .rank-card {
         background: rgba(255, 255, 255, 0.05);
         border: 1px solid rgba(255, 255, 255, 0.1);
@@ -248,7 +238,6 @@ st.markdown("""
         color: #e2e8f0;
     }
 
-    /* Exclusive Gold Trophy Card for the Winner */
     .trophy-card {
         background: linear-gradient(135deg, #FDE047 0%, #F59E0B 55%, #B45309 100%);
         color: #111827;
@@ -286,7 +275,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Brand Title
 st.markdown("""
     <div class="app-header">
         <div class="app-title">⚡ BUZZR LIVE</div>
@@ -308,6 +296,17 @@ if "user_name" not in st.session_state:
 
         if master_taken:
             st.caption(f"👑 Trivia Master in room: **{state['master']}**")
+            # Quick fix button to clear stuck master if they left abruptly
+            if st.button("🔄 Clear Stuck Master / Reset Room", use_container_width=True):
+                state["master"] = None
+                state["players"] = {}
+                state["scores"] = {}
+                state["buzz_queue"] = []
+                state["locked"] = True
+                state["round_num"] = 1
+                state["round_scored"] = False
+                state["game_over"] = False
+                st.rerun()
 
         st.markdown('<div class="action-btn">', unsafe_allow_html=True)
         if st.button("JOIN GAME →", type="primary", use_container_width=True):
@@ -439,9 +438,6 @@ else:
 # ROLE-BASED INTERFACE (MASTER CONTROLS vs PLAYER BUZZER)
 # ==============================================================================
 if role == "Trivia Master":
-    # --------------------------------------------------------------------------
-    # TRIVIA MASTER VIEW ONLY
-    # --------------------------------------------------------------------------
     st.markdown('<div class="action-btn">', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
@@ -459,7 +455,6 @@ if role == "Trivia Master":
             st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # Round Winner & Point Assignment
     all_players = list(state["scores"].keys())
     if all_players:
         with st.container(border=True):
@@ -503,9 +498,6 @@ if role == "Trivia Master":
         st.markdown('</div>', unsafe_allow_html=True)
 
 else:
-    # --------------------------------------------------------------------------
-    # PLAYER BUZZER VIEW ONLY
-    # --------------------------------------------------------------------------
     already_buzzed = any(b["name"] == user for b in state["buzz_queue"])
 
     if state["locked"]:
@@ -531,9 +523,6 @@ else:
 
 st.write("")
 
-# ==============================================================================
-# REACTION ORDER & LIVE SCOREBOARD CARDS
-# ==============================================================================
 if state["buzz_queue"]:
     st.markdown("#### ⚡ Buzz Order")
     first_time = state["buzz_queue"][0]["time"]
