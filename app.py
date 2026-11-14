@@ -37,7 +37,7 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
 
-    /* Hide default Streamlit chrome for a clean native app look */
+    /* Hide default Streamlit chrome */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
@@ -201,6 +201,21 @@ st.markdown("""
         border-radius: 12px !important;
     }
 
+    /* Styled Exit Button */
+    .exit-btn div.stButton > button {
+        min-height: 44px !important;
+        font-size: 14px !important;
+        font-weight: 700 !important;
+        background: rgba(239, 68, 68, 0.15) !important;
+        border: 1px solid #ef4444 !important;
+        color: #fca5a5 !important;
+        border-radius: 12px !important;
+    }
+    .exit-btn div.stButton > button:hover {
+        background: rgba(239, 68, 68, 0.3) !important;
+        color: #ffffff !important;
+    }
+
     /* Buzz Queue & Leaderboard Cards */
     .rank-card {
         background: rgba(255, 255, 255, 0.05);
@@ -314,7 +329,6 @@ if "user_name" not in st.session_state:
                 st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # Show who is already waiting in the lobby
     if state["players"] or state["master"]:
         st.caption(f"Currently in lobby: {len(state['players'])} player(s)" + (f" + Master ({state['master']})" if state["master"] else ""))
     st.stop()
@@ -327,18 +341,19 @@ if role == "Player (Buzzer)":
     if user not in state["scores"]:
         state["scores"][user] = 0
 
-# Top Info Bar + Leave Button
-top_c1, top_c2 = st.columns([4, 1])
+# Top Info Bar + Styled Exit Button
+top_c1, top_c2 = st.columns([3.5, 1.5])
 with top_c1:
     role_tag = "👑 MASTER" if role == "Trivia Master" else f"🎮 {state['scores'].get(user, 0)} PTS"
     st.markdown(f"""
         <div class="user-pill">
             <div class="pill-left">{user} <span class="pill-badge">{role_tag}</span></div>
-            <div class="round-badge">ROUND {state['round_num']}</div>
+            <div class="round-badge">R{state['round_num']}</div>
         </div>
     """, unsafe_allow_html=True)
 with top_c2:
-    if st.button("Exit", use_container_width=True):
+    st.markdown('<div class="exit-btn">', unsafe_allow_html=True)
+    if st.button("🚪 Exit", use_container_width=True):
         if role == "Trivia Master" and state["master"] == user:
             state["master"] = None
         elif user in state["players"]:
@@ -346,6 +361,7 @@ with top_c2:
         del st.session_state.user_name
         del st.session_state.role
         st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 # GAME OVER / FINAL PODIUM SCREEN
@@ -355,7 +371,6 @@ if state["game_over"]:
     top_score = sorted_scores[0][1] if sorted_scores else 0
     winners = [name for name, sc in sorted_scores if sc == top_score and top_score > 0]
 
-    # Trigger exclusive celebration ONLY on the winning player's screen
     if user in winners:
         if not st.session_state.get("celebrated", False):
             st.balloons()
@@ -380,7 +395,6 @@ if state["game_over"]:
         else:
             st.markdown('<div class="status-banner status-locked">🏁 GAME OVER — NO POINTS SCORED</div>', unsafe_allow_html=True)
 
-    # Final Podium Cards
     st.markdown("#### 📊 Final Standings")
     for rank, (p_name, p_score) in enumerate(sorted_scores, start=1):
         medal = "🥇" if rank == 1 and p_score > 0 else "🥈" if rank == 2 and p_score > 0 else "🥉" if rank == 3 and p_score > 0 else f"#{rank}"
@@ -422,9 +436,12 @@ else:
     st.markdown('<div class="status-banner status-live">🟢 BUZZERS LIVE — TAP NOW!</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-# TRIVIA MASTER CONSOLE
+# ROLE-BASED INTERFACE (MASTER CONTROLS vs PLAYER BUZZER)
 # ==============================================================================
 if role == "Trivia Master":
+    # --------------------------------------------------------------------------
+    # TRIVIA MASTER VIEW ONLY
+    # --------------------------------------------------------------------------
     st.markdown('<div class="action-btn">', unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1:
@@ -485,10 +502,10 @@ if role == "Trivia Master":
             st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
 
-# ==============================================================================
-# PLAYER BUZZER BUTTON
-# ==============================================================================
 else:
+    # --------------------------------------------------------------------------
+    # PLAYER BUZZER VIEW ONLY
+    # --------------------------------------------------------------------------
     already_buzzed = any(b["name"] == user for b in state["buzz_queue"])
 
     if state["locked"]:
