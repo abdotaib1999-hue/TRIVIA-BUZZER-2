@@ -1,5 +1,4 @@
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
 import time
 from datetime import datetime
 
@@ -27,8 +26,25 @@ def get_game_state():
 
 state = get_game_state()
 
-# Auto-refresh every 500ms so all phones & PCs stay synced
-st_autorefresh(interval=500, key="buzzer_sync")
+# ==============================================================================
+# RESTORE SESSION FROM URL ON REFRESH (Prevents getting kicked out!)
+# ==============================================================================
+if "user_name" not in st.session_state:
+    saved_name = st.query_params.get("name", "").strip()
+    saved_role = st.query_params.get("role", "").strip()
+    if saved_name and saved_role in ["Player (Buzzer)", "Trivia Master"]:
+        # Reclaim role safely
+        if saved_role == "Trivia Master":
+            if state["master"] in [None, saved_name]:
+                state["master"] = saved_name
+                st.session_state.user_name = saved_name
+                st.session_state.role = saved_role
+        else:
+            st.session_state.user_name = saved_name
+            st.session_state.role = saved_role
+            state["players"][saved_name] = time.time()
+            if saved_name not in state["scores"]:
+                state["scores"][saved_name] = 0
 
 # ==============================================================================
 # CUSTOM TV GAME SHOW CSS
@@ -145,9 +161,10 @@ st.markdown("""
         50% { box-shadow: 0 0 30px rgba(16, 185, 129, 0.45); }
     }
 
+    /* 3D Arcade Buzzer Button */
     .buzzer-active div.stButton > button {
-        height: clamp(165px, 28vh, 230px) !important;
-        font-size: clamp(32px, 6vw, 46px) !important;
+        height: clamp(175px, 30vh, 240px) !important;
+        font-size: clamp(34px, 6.5vw, 48px) !important;
         font-weight: 900 !important;
         letter-spacing: 3px !important;
         color: #ffffff !important;
@@ -155,35 +172,12 @@ st.markdown("""
         border: 4px solid #ff8787 !important;
         border-radius: 28px !important;
         box-shadow: 0 12px 0 #7f0909, 0 20px 35px rgba(255, 59, 59, 0.45) !important;
-        transition: all 0.08s ease !important;
-    }
-    .buzzer-active div.stButton > button:hover {
-        background: linear-gradient(180deg, #ff5252 0%, #d91c1c 100%) !important;
-        box-shadow: 0 12px 0 #7f0909, 0 25px 45px rgba(255, 59, 59, 0.65) !important;
+        transition: all 0.06s ease !important;
+        touch-action: manipulation !important;
     }
     .buzzer-active div.stButton > button:active {
         transform: translateY(8px) !important;
         box-shadow: 0 4px 0 #7f0909, 0 10px 20px rgba(255, 59, 59, 0.4) !important;
-    }
-
-    .buzzer-locked div.stButton > button {
-        height: clamp(150px, 25vh, 200px) !important;
-        font-size: clamp(24px, 4.5vw, 32px) !important;
-        font-weight: 800 !important;
-        color: #64748b !important;
-        background: #1e293b !important;
-        border: 2px solid #334155 !important;
-        border-radius: 28px !important;
-        box-shadow: none !important;
-    }
-    .buzzer-done div.stButton > button {
-        height: clamp(150px, 25vh, 200px) !important;
-        font-size: clamp(24px, 4.5vw, 32px) !important;
-        font-weight: 800 !important;
-        color: #6ee7b7 !important;
-        background: rgba(6, 78, 59, 0.6) !important;
-        border: 2px solid #10b981 !important;
-        border-radius: 28px !important;
     }
 
     .action-btn div.stButton > button {
@@ -191,6 +185,7 @@ st.markdown("""
         font-size: 15px !important;
         font-weight: 700 !important;
         border-radius: 12px !important;
+        touch-action: manipulation !important;
     }
 
     .exit-btn div.stButton > button {
@@ -201,10 +196,6 @@ st.markdown("""
         border: 1px solid #ef4444 !important;
         color: #fca5a5 !important;
         border-radius: 12px !important;
-    }
-    .exit-btn div.stButton > button:hover {
-        background: rgba(239, 68, 68, 0.3) !important;
-        color: #ffffff !important;
     }
 
     .rank-card {
@@ -253,7 +244,6 @@ st.markdown("""
         font-size: clamp(68px, 14vw, 96px);
         line-height: 1.1;
         margin-bottom: 10px;
-        filter: drop-shadow(0 6px 12px rgba(0,0,0,0.25));
     }
     .trophy-title {
         font-size: clamp(26px, 5.5vw, 36px);
@@ -296,7 +286,6 @@ if "user_name" not in st.session_state:
 
         if master_taken:
             st.caption(f"👑 Trivia Master in room: **{state['master']}**")
-            # Quick fix button to clear stuck master if they left abruptly
             if st.button("🔄 Clear Stuck Master / Reset Room", use_container_width=True):
                 state["master"] = None
                 state["players"] = {}
@@ -319,6 +308,10 @@ if "user_name" not in st.session_state:
             else:
                 st.session_state.user_name = name_input
                 st.session_state.role = role
+                # Save to URL query params so browser refresh keeps them logged in!
+                st.query_params["name"] = name_input
+                st.query_params["role"] = role
+
                 if role == "Trivia Master":
                     state["master"] = name_input
                 else:
@@ -327,29 +320,15 @@ if "user_name" not in st.session_state:
                         state["scores"][name_input] = 0
                 st.rerun()
         st.markdown('</div>', unsafe_allow_html=True)
-
-    if state["players"] or state["master"]:
-        st.caption(f"Currently in lobby: {len(state['players'])} player(s)" + (f" + Master ({state['master']})" if state["master"] else ""))
     st.stop()
 
-# Keep active user registered
 user = st.session_state.user_name
 role = st.session_state.role
-if role == "Player (Buzzer)":
-    state["players"][user] = time.time()
-    if user not in state["scores"]:
-        state["scores"][user] = 0
 
-# Top Info Bar + Styled Exit Button
+# Top Exit Button (Outside fragment so it never blocks)
 top_c1, top_c2 = st.columns([3.5, 1.5])
 with top_c1:
-    role_tag = "👑 MASTER" if role == "Trivia Master" else f"🎮 {state['scores'].get(user, 0)} PTS"
-    st.markdown(f"""
-        <div class="user-pill">
-            <div class="pill-left">{user} <span class="pill-badge">{role_tag}</span></div>
-            <div class="round-badge">R{state['round_num']}</div>
-        </div>
-    """, unsafe_allow_html=True)
+    st.caption("⚡ Live Connected • Safe to refresh anytime")
 with top_c2:
     st.markdown('<div class="exit-btn">', unsafe_allow_html=True)
     if st.button("🚪 Exit", use_container_width=True):
@@ -359,197 +338,210 @@ with top_c2:
             del state["players"][user]
         del st.session_state.user_name
         del st.session_state.role
+        st.query_params.clear()
         st.rerun()
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-# GAME OVER / FINAL PODIUM SCREEN
+# PLAYER BUZZER BUTTON (STATIC OUTSIDE FRAGMENT = INSTANT RESPONSE!)
 # ==============================================================================
-if state["game_over"]:
-    sorted_scores = sorted(state["scores"].items(), key=lambda x: x[1], reverse=True)
-    top_score = sorted_scores[0][1] if sorted_scores else 0
-    winners = [name for name, sc in sorted_scores if sc == top_score and top_score > 0]
+if role == "Player (Buzzer)" and not state["game_over"]:
+    st.markdown('<div class="buzzer-active">', unsafe_allow_html=True)
+    if st.button("🚨 BUZZ!", use_container_width=True):
+        now = time.time()
+        if state["locked"]:
+            st.toast("🔒 Wait! Buzzers are currently locked by the Master.", icon="⏳")
+        elif any(b["name"] == user for b in state["buzz_queue"]):
+            st.toast("✅ You already buzzed in for this round!", icon="⚡")
+        else:
+            state["buzz_queue"].append({
+                "name": user,
+                "time": now,
+                "display": datetime.fromtimestamp(now).strftime("%H:%M:%S.%f")[:-3]
+            })
+            st.toast("⚡ BUZZ REGISTERED!", icon="🚨")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-    if user in winners:
-        if not st.session_state.get("celebrated", False):
-            st.balloons()
-            st.session_state.celebrated = True
+# ==============================================================================
+# LIVE SYNCED BOARD (PARTIAL AUTO-REFRESH EVERY 1s WITHOUT INTERRUPTING CLICKS)
+# ==============================================================================
+@st.fragment(run_every=1.0)
+def live_game_board():
+    if role == "Player (Buzzer)":
+        state["players"][user] = time.time()
+        if user not in state["scores"]:
+            state["scores"][user] = 0
 
-        st.markdown(f"""
-            <div class="trophy-card">
-                <div class="trophy-icon">🏆</div>
-                <p class="trophy-title">Trivia Champion!</p>
-                <p class="trophy-subtitle">Congratulations, {user}!<br>Victory with <b>{top_score} points</b>!</p>
-            </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.session_state.celebrated = False
-        if winners:
-            winner_names = " & ".join(winners)
+    # Player / Master Status Pill
+    role_tag = "👑 MASTER" if role == "Trivia Master" else f"🎮 {state['scores'].get(user, 0)} PTS"
+    st.markdown(f"""
+        <div class="user-pill">
+            <div class="pill-left">{user} <span class="pill-badge">{role_tag}</span></div>
+            <div class="round-badge">R{state['round_num']}</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    # --------------------------------------------------------------------------
+    # GAME OVER SCREEN
+    # --------------------------------------------------------------------------
+    if state["game_over"]:
+        sorted_scores = sorted(state["scores"].items(), key=lambda x: x[1], reverse=True)
+        top_score = sorted_scores[0][1] if sorted_scores else 0
+        winners = [name for name, sc in sorted_scores if sc == top_score and top_score > 0]
+
+        if user in winners:
+            if not st.session_state.get("celebrated", False):
+                st.balloons()
+                st.session_state.celebrated = True
             st.markdown(f"""
-                <div class="status-banner status-winner">
-                    🎉 CHAMPION: {winner_names.upper()} ({top_score} PTS)
+                <div class="trophy-card">
+                    <div class="trophy-icon">🏆</div>
+                    <p class="trophy-title">Trivia Champion!</p>
+                    <p class="trophy-subtitle">Congratulations, {user}!<br>Victory with <b>{top_score} points</b>!</p>
                 </div>
             """, unsafe_allow_html=True)
         else:
-            st.markdown('<div class="status-banner status-locked">🏁 GAME OVER — NO POINTS SCORED</div>', unsafe_allow_html=True)
+            st.session_state.celebrated = False
+            if winners:
+                winner_names = " & ".join(winners)
+                st.markdown(f'<div class="status-banner status-winner">🎉 CHAMPION: {winner_names.upper()} ({top_score} PTS)</div>', unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="status-banner status-locked">🏁 GAME OVER — NO POINTS SCORED</div>', unsafe_allow_html=True)
 
-    st.markdown("#### 📊 Final Standings")
-    for rank, (p_name, p_score) in enumerate(sorted_scores, start=1):
-        medal = "🥇" if rank == 1 and p_score > 0 else "🥈" if rank == 2 and p_score > 0 else "🥉" if rank == 3 and p_score > 0 else f"#{rank}"
-        card_cls = "rank-card rank-card-first" if rank == 1 and p_score > 0 else "rank-card"
-        st.markdown(f"""
-            <div class="{card_cls}">
-                <div class="rank-left"><span>{medal}</span> <span>{p_name}</span></div>
-                <div class="rank-right">{p_score} pts</div>
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown("#### 📊 Final Standings")
+        for rank, (p_name, p_score) in enumerate(sorted_scores, start=1):
+            medal = "🥇" if rank == 1 and p_score > 0 else "🥈" if rank == 2 and p_score > 0 else "🥉" if rank == 3 and p_score > 0 else f"#{rank}"
+            card_cls = "rank-card rank-card-first" if rank == 1 and p_score > 0 else "rank-card"
+            st.markdown(f"""
+                <div class="{card_cls}">
+                    <div class="rank-left"><span>{medal}</span> <span>{p_name}</span></div>
+                    <div class="rank-right">{p_score} pts</div>
+                </div>
+            """, unsafe_allow_html=True)
 
-    st.write("")
+        if role == "Trivia Master":
+            st.write("")
+            st.markdown('<div class="action-btn">', unsafe_allow_html=True)
+            if st.button("🔄 START NEW GAME", type="primary", use_container_width=True):
+                state["scores"] = {p: 0 for p in state["players"]}
+                state["buzz_queue"] = []
+                state["locked"] = True
+                state["round_num"] = 1
+                state["round_scored"] = False
+                state["game_over"] = False
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+        return
+
+    st.session_state.celebrated = False
+
+    # --------------------------------------------------------------------------
+    # LIVE STATUS BANNER
+    # --------------------------------------------------------------------------
+    if state["buzz_queue"]:
+        first_player = state["buzz_queue"][0]["name"].upper()
+        st.markdown(f'<div class="status-banner status-winner">⚡ {first_player} BUZZED FIRST!</div>', unsafe_allow_html=True)
+    elif state["locked"]:
+        st.markdown('<div class="status-banner status-locked">🔒 BUZZERS LOCKED — GET READY</div>', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="status-banner status-live">🟢 BUZZERS LIVE — TAP THE RED BUTTON!</div>', unsafe_allow_html=True)
+
+    # --------------------------------------------------------------------------
+    # TRIVIA MASTER CONTROLS
+    # --------------------------------------------------------------------------
     if role == "Trivia Master":
         st.markdown('<div class="action-btn">', unsafe_allow_html=True)
-        if st.button("🔄 START NEW GAME", type="primary", use_container_width=True):
-            state["scores"] = {p: 0 for p in state["players"]}
-            state["buzz_queue"] = []
-            state["locked"] = True
-            state["round_num"] = 1
-            state["round_scored"] = False
-            state["game_over"] = False
-            st.rerun()
+        c1, c2 = st.columns(2)
+        with c1:
+            if st.button("🟢 OPEN BUZZER", type="primary", use_container_width=True, disabled=not state["locked"]):
+                state["buzz_queue"] = []
+                state["locked"] = False
+                state["round_scored"] = False
+                st.rerun(scope="fragment")
+        with c2:
+            if st.button("⏭️ NEXT ROUND", use_container_width=True):
+                state["buzz_queue"] = []
+                state["locked"] = True
+                state["round_num"] += 1
+                state["round_scored"] = False
+                st.rerun(scope="fragment")
         st.markdown('</div>', unsafe_allow_html=True)
+
+        all_players = list(state["scores"].keys())
+        if all_players:
+            with st.container(border=True):
+                st.markdown("**🏅 Award Round Points**")
+                buzzed_names = [b["name"] for b in state["buzz_queue"] if b["name"] in all_players]
+                ordered_choices = buzzed_names + [p for p in all_players if p not in buzzed_names]
+
+                sc1, sc2, sc3 = st.columns([2.2, 1, 1.2])
+                with sc1:
+                    selected_winner = st.selectbox("Player", ordered_choices, label_visibility="collapsed")
+                with sc2:
+                    points_to_add = st.number_input("Pts", min_value=-10, max_value=100, value=1, step=1, label_visibility="collapsed")
+                with sc3:
+                    if st.button("➕ Award", type="primary", use_container_width=True):
+                        state["scores"][selected_winner] = state["scores"].get(selected_winner, 0) + points_to_add
+                        state["locked"] = True
+                        state["round_scored"] = True
+                        st.rerun(scope="fragment")
+
+                if state["round_scored"]:
+                    st.caption("✅ Points added! Hit **NEXT ROUND** to continue.")
+
+        with st.expander("🏁 End Game / Reset Room"):
+            st.markdown('<div class="action-btn">', unsafe_allow_html=True)
+            if st.button("🏆 Finish All Rounds & Crown Winner", type="primary", use_container_width=True):
+                state["locked"] = True
+                state["game_over"] = True
+                st.rerun()
+            if st.button("🗑️ Kick All & Reset Studio", use_container_width=True):
+                state["master"] = None
+                state["players"] = {}
+                state["scores"] = {}
+                state["buzz_queue"] = []
+                state["locked"] = True
+                state["round_num"] = 1
+                state["round_scored"] = False
+                state["game_over"] = False
+                del st.session_state.user_name
+                del st.session_state.role
+                st.query_params.clear()
+                st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+    # --------------------------------------------------------------------------
+    # BUZZ ORDER & LIVE SCOREBOARD
+    # --------------------------------------------------------------------------
+    if state["buzz_queue"]:
+        st.markdown("#### ⚡ Buzz Order")
+        first_time = state["buzz_queue"][0]["time"]
+        for idx, entry in enumerate(state["buzz_queue"], start=1):
+            diff = entry["time"] - first_time
+            delay_str = "0.000s (1ST)" if idx == 1 else f"+{diff:.3f}s"
+            card_cls = "rank-card rank-card-first" if idx == 1 else "rank-card"
+            badge_icon = "⚡" if idx == 1 else f"#{idx}"
+            st.markdown(f"""
+                <div class="{card_cls}">
+                    <div class="rank-left"><span>{badge_icon}</span> <span>{entry['name']}</span></div>
+                    <div class="rank-right">{delay_str}</div>
+                </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("#### 🏆 Live Scoreboard")
+    if state["scores"]:
+        sorted_live = sorted(state["scores"].items(), key=lambda x: x[1], reverse=True)
+        for rank, (p_name, p_score) in enumerate(sorted_live, start=1):
+            online_dot = "🟢" if p_name in state["players"] else "⚪"
+            medal = "🥇" if rank == 1 and p_score > 0 else f"#{rank}"
+            card_cls = "rank-card rank-card-first" if rank == 1 and p_score > 0 else "rank-card"
+            st.markdown(f"""
+                <div class="{card_cls}">
+                    <div class="rank-left"><span>{online_dot} {medal}</span> <span>{p_name}</span></div>
+                    <div class="rank-right">{p_score} pts</div>
+                </div>
+            """, unsafe_allow_html=True)
     else:
-        st.caption("Waiting for the Trivia Master to start a new game...")
-    st.stop()
+        st.caption("Waiting for players to join the studio...")
 
-st.session_state.celebrated = False
-
-# ==============================================================================
-# LIVE STATUS BANNER (VISIBLE TO EVERYONE)
-# ==============================================================================
-if state["buzz_queue"]:
-    first_player = state["buzz_queue"][0]["name"].upper()
-    st.markdown(f'<div class="status-banner status-winner">⚡ {first_player} BUZZED FIRST!</div>', unsafe_allow_html=True)
-elif state["locked"]:
-    st.markdown('<div class="status-banner status-locked">🔒 BUZZERS LOCKED — GET READY</div>', unsafe_allow_html=True)
-else:
-    st.markdown('<div class="status-banner status-live">🟢 BUZZERS LIVE — TAP NOW!</div>', unsafe_allow_html=True)
-
-# ==============================================================================
-# ROLE-BASED INTERFACE (MASTER CONTROLS vs PLAYER BUZZER)
-# ==============================================================================
-if role == "Trivia Master":
-    st.markdown('<div class="action-btn">', unsafe_allow_html=True)
-    c1, c2 = st.columns(2)
-    with c1:
-        if st.button("🟢 OPEN BUZZER", type="primary", use_container_width=True, disabled=not state["locked"]):
-            state["buzz_queue"] = []
-            state["locked"] = False
-            state["round_scored"] = False
-            st.rerun()
-    with c2:
-        if st.button("⏭️ NEXT ROUND", use_container_width=True):
-            state["buzz_queue"] = []
-            state["locked"] = True
-            state["round_num"] += 1
-            state["round_scored"] = False
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-    all_players = list(state["scores"].keys())
-    if all_players:
-        with st.container(border=True):
-            st.markdown("**🏅 Award Round Points**")
-            buzzed_names = [b["name"] for b in state["buzz_queue"] if b["name"] in all_players]
-            ordered_choices = buzzed_names + [p for p in all_players if p not in buzzed_names]
-
-            sc1, sc2, sc3 = st.columns([2.2, 1, 1.2])
-            with sc1:
-                selected_winner = st.selectbox("Player", ordered_choices, label_visibility="collapsed")
-            with sc2:
-                points_to_add = st.number_input("Pts", min_value=-10, max_value=100, value=1, step=1, label_visibility="collapsed")
-            with sc3:
-                if st.button("➕ Award", type="primary", use_container_width=True):
-                    state["scores"][selected_winner] = state["scores"].get(selected_winner, 0) + points_to_add
-                    state["locked"] = True
-                    state["round_scored"] = True
-                    st.rerun()
-
-            if state["round_scored"]:
-                st.caption("✅ Points added! Hit **NEXT ROUND** to continue.")
-
-    with st.expander("🏁 End Game / Reset Room"):
-        st.markdown('<div class="action-btn">', unsafe_allow_html=True)
-        if st.button("🏆 Finish All Rounds & Crown Winner", type="primary", use_container_width=True):
-            state["locked"] = True
-            state["game_over"] = True
-            st.rerun()
-        if st.button("🗑️ Kick All & Reset Studio", use_container_width=True):
-            state["master"] = None
-            state["players"] = {}
-            state["scores"] = {}
-            state["buzz_queue"] = []
-            state["locked"] = True
-            state["round_num"] = 1
-            state["round_scored"] = False
-            state["game_over"] = False
-            del st.session_state.user_name
-            del st.session_state.role
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-else:
-    already_buzzed = any(b["name"] == user for b in state["buzz_queue"])
-
-    if state["locked"]:
-        st.markdown('<div class="buzzer-locked">', unsafe_allow_html=True)
-        st.button("🔒 LOCKED", disabled=True, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    elif already_buzzed:
-        st.markdown('<div class="buzzer-done">', unsafe_allow_html=True)
-        st.button("✅ BUZZED IN!", disabled=True, use_container_width=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="buzzer-active">', unsafe_allow_html=True)
-        if st.button("🚨 BUZZ!", use_container_width=True):
-            now = time.time()
-            if not any(b["name"] == user for b in state["buzz_queue"]):
-                state["buzz_queue"].append({
-                    "name": user,
-                    "time": now,
-                    "display": datetime.fromtimestamp(now).strftime("%H:%M:%S.%f")[:-3]
-                })
-            st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-
-st.write("")
-
-if state["buzz_queue"]:
-    st.markdown("#### ⚡ Buzz Order")
-    first_time = state["buzz_queue"][0]["time"]
-    for idx, entry in enumerate(state["buzz_queue"], start=1):
-        diff = entry["time"] - first_time
-        delay_str = "0.000s (1ST)" if idx == 1 else f"+{diff:.3f}s"
-        card_cls = "rank-card rank-card-first" if idx == 1 else "rank-card"
-        badge_icon = "⚡" if idx == 1 else f"#{idx}"
-        st.markdown(f"""
-            <div class="{card_cls}">
-                <div class="rank-left"><span>{badge_icon}</span> <span>{entry['name']}</span></div>
-                <div class="rank-right">{delay_str}</div>
-            </div>
-        """, unsafe_allow_html=True)
-
-st.markdown("#### 🏆 Live Scoreboard")
-if state["scores"]:
-    sorted_live = sorted(state["scores"].items(), key=lambda x: x[1], reverse=True)
-    for rank, (p_name, p_score) in enumerate(sorted_live, start=1):
-        online_dot = "🟢" if p_name in state["players"] else "⚪"
-        medal = "🥇" if rank == 1 and p_score > 0 else f"#{rank}"
-        card_cls = "rank-card rank-card-first" if rank == 1 and p_score > 0 else "rank-card"
-        st.markdown(f"""
-            <div class="{card_cls}">
-                <div class="rank-left"><span>{online_dot} {medal}</span> <span>{p_name}</span></div>
-                <div class="rank-right">{p_score} pts</div>
-            </div>
-        """, unsafe_allow_html=True)
-else:
-    st.caption("Waiting for players to join the studio...")
+live_game_board()
